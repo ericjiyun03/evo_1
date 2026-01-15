@@ -22,6 +22,7 @@ import {
   useWaitForTransactionReceipt,
 } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
+import { baseSepolia } from 'wagmi/chains';
 import { GamblingAbi, gamblingContract } from '@/app/lib/Gambling';
 
 interface Bid {
@@ -277,55 +278,85 @@ export default function GamblingPage() {
   const isLoading = isWritePending || isTxLoading;
 
   const handlePlaceBid = (amount: string) => {
-    writeContract(
-      {
-        abi: GamblingAbi,
-        address: gamblingContract,
-        functionName: 'placeBid',
-        value: parseEther(amount),
-      },
-      {
-        onSuccess: (hash) => {
-          setTxHash(hash);
-          setTimeout(() => refetchActiveBids(), 3000);
+    try {
+      writeContract(
+        {
+          abi: GamblingAbi,
+          address: gamblingContract,
+          functionName: 'placeBid',
+          value: parseEther(amount),
+          chainId: baseSepolia.id,
         },
-      }
-    );
+        {
+          onSuccess: (hash) => {
+            setTxHash(hash);
+            setTimeout(() => refetchActiveBids(), 3000);
+          },
+          onError: (error) => {
+            console.error('Error placing bid:', error);
+            alert(`Failed to place bid: ${error.message}`);
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error in handlePlaceBid:', error);
+      alert('Failed to place bid. Please check your wallet and try again.');
+    }
   };
 
   const handleChallenge = (bidId: bigint, amount: string) => {
-    writeContract(
-      {
-        abi: GamblingAbi,
-        address: gamblingContract,
-        functionName: 'challenge',
-        args: [bidId],
-        value: parseEther(amount),
-      },
-      {
-        onSuccess: (hash) => {
-          setTxHash(hash);
-          setTimeout(() => refetchActiveBids(), 3000);
+    try {
+      writeContract(
+        {
+          abi: GamblingAbi,
+          address: gamblingContract,
+          functionName: 'challenge',
+          args: [bidId],
+          value: parseEther(amount),
+          chainId: baseSepolia.id,
         },
-      }
-    );
+        {
+          onSuccess: (hash) => {
+            setTxHash(hash);
+            setTimeout(() => refetchActiveBids(), 3000);
+          },
+          onError: (error) => {
+            console.error('Error challenging bid:', error);
+            alert(`Failed to challenge: ${error.message}`);
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error in handleChallenge:', error);
+      alert('Failed to challenge bid. Please check your wallet and try again.');
+    }
   };
 
   const handleCancel = (bidId: bigint) => {
-    writeContract(
-      {
-        abi: GamblingAbi,
-        address: gamblingContract,
-        functionName: 'cancelBid',
-        args: [bidId],
-      },
-      {
-        onSuccess: (hash) => {
-          setTxHash(hash);
-          setTimeout(() => refetchActiveBids(), 3000);
+    try {
+      writeContract(
+        {
+          abi: GamblingAbi,
+          address: gamblingContract,
+          functionName: 'cancelBid',
+          args: [bidId],
+          chainId: baseSepolia.id,
         },
-      }
-    );
+        {
+          onSuccess: (hash) => {
+            setTxHash(hash);
+            setTimeout(() => refetchActiveBids(), 3000);
+          },
+          onError: (error) => {
+            console.error('Error cancelling bid:', error);
+            alert(`Failed to cancel: ${error.message}`);
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error in handleCancel:', error);
+      alert('Failed to cancel bid. Please check your wallet and try again.');
+    }
   };
 
   return (
