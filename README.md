@@ -5,7 +5,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with `npm create on
 
 ## Getting Started
 
-Install dependencies
+Install dependencies 
 
 ```bash
 npm install
