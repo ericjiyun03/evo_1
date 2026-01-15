@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Address,
   Avatar,
@@ -22,7 +22,7 @@ import {
   useWaitForTransactionReceipt,
   useSwitchChain,
 } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
+import { parseEther, formatEther, decodeEventLog } from 'viem';
 import { baseSepolia } from 'wagmi/chains';
 import { GamblingAbi, gamblingContract } from '@/app/lib/Gambling';
 
@@ -31,6 +31,74 @@ interface Bid {
   bidder: string;
   amount: bigint;
   active: boolean;
+}
+
+interface ChallengeResult {
+  won: boolean;
+  winnings: string;
+}
+
+// Win/Lose Animation Modal
+function ResultModal({ 
+  result, 
+  onClose 
+}: { 
+  result: ChallengeResult | null; 
+  onClose: () => void;
+}) {
+  if (!result) return null;
+
+  return (
+    <div className="result-modal-overlay" onClick={onClose}>
+      <div className="result-modal" onClick={(e) => e.stopPropagation()}>
+        {result.won ? (
+          <>
+            <div className="result-icon win">🎉</div>
+            <div className="result-confetti">
+              {[...Array(50)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className="confetti-piece"
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 3}s`,
+                    backgroundColor: ['#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4'][Math.floor(Math.random() * 5)],
+                  }}
+                />
+              ))}
+            </div>
+            <h2 className="result-title win">YOU WON!</h2>
+            <p className="result-amount">+{result.winnings} ETH</p>
+            <p className="result-subtitle">The odds were in your favor! 🍀</p>
+          </>
+        ) : (
+          <>
+            <div className="result-icon lose">💀</div>
+            <div className="result-skull-rain">
+              {[...Array(20)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className="skull-piece"
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 2}s`,
+                  }}
+                >
+                  💀
+                </div>
+              ))}
+            </div>
+            <h2 className="result-title lose">YOU LOST</h2>
+            <p className="result-amount lose">-{result.winnings} ETH</p>
+            <p className="result-subtitle">Better luck next time... 🎲</p>
+          </>
+        )}
+        <button className="result-close-btn" onClick={onClose}>
+          {result.won ? 'Collect Winnings 💰' : 'Try Again 🎯'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function BidCard({
@@ -46,7 +114,7 @@ function BidCard({
   onCancel: (bidId: bigint) => void;
   isLoading: boolean;
 }) {
-  const [challengeAmount, setChallengeAmount] = useState('0.01');
+  const [challengeAmount, setChallengeAmount] = useState('0.00001');
   const isOwner =
     userAddress?.toLowerCase() === bid.bidder.toLowerCase();
   const bidAmountEth = parseFloat(formatEther(bid.amount));
@@ -158,7 +226,7 @@ function PlaceBidForm({
   onPlaceBid: (amount: string) => void;
   isLoading: boolean;
 }) {
-  const [bidAmount, setBidAmount] = useState('0.01');
+  const [bidAmount, setBidAmount] = useState('0.00001');
 
   return (
     <div className="place-bid-card">
@@ -193,6 +261,8 @@ export default function GamblingPage() {
   const { address, chain } = useAccount();
   const { switchChain } = useSwitchChain();
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+  const [challengeResult, setChallengeResult] = useState<ChallengeResult | null>(null);
+  const [pendingChallengeAmount, setPendingChallengeAmount] = useState<string>('0');
 
   // Read active bids
   const { data: activeBidIds, refetch: refetchActiveBids } = useReadContract({
@@ -273,11 +343,41 @@ export default function GamblingPage() {
 
   // Write functions
   const { writeContract, isPending: isWritePending } = useWriteContract();
-  const { isLoading: isTxLoading } = useWaitForTransactionReceipt({
+  const { isLoading: isTxLoading, data: txReceipt } = useWaitForTransactionReceipt({
     hash: txHash,
   });
 
   const isLoading = isWritePending || isTxLoading;
+
+  // Process transaction receipt to check for challenge result
+  useEffect(() => {
+    if (txReceipt && txReceipt.logs && pendingChallengeAmount !== '0') {
+      // Look for BidChallenged event
+      for (const log of txReceipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: GamblingAbi,
+            data: log.data,
+            topics: log.topics,
+          });
+          
+          if (decoded.eventName === 'BidChallenged') {
+            const { winner, winnings } = decoded.args as { winner: string; winnings: bigint };
+            const userWon = winner.toLowerCase() === address?.toLowerCase();
+            
+            setChallengeResult({
+              won: userWon,
+              winnings: userWon ? formatEther(winnings) : pendingChallengeAmount,
+            });
+            setPendingChallengeAmount('0');
+            break;
+          }
+        } catch {
+          // Not the event we're looking for
+        }
+      }
+    }
+  }, [txReceipt, address, pendingChallengeAmount]);
 
   const handlePlaceBid = async (amount: string) => {
     try {
@@ -328,6 +428,9 @@ export default function GamblingPage() {
         }
       }
 
+      // Track the challenge amount for result display
+      setPendingChallengeAmount(amount);
+
       writeContract(
         {
           abi: GamblingAbi,
@@ -344,12 +447,14 @@ export default function GamblingPage() {
           },
           onError: (error) => {
             console.error('Error challenging bid:', error);
+            setPendingChallengeAmount('0');
             alert(`Failed to challenge: ${error.message}`);
           },
         }
       );
     } catch (error) {
       console.error('Error in handleChallenge:', error);
+      setPendingChallengeAmount('0');
       alert('Failed to challenge bid. Please check your wallet and try again.');
     }
   };
@@ -551,6 +656,12 @@ export default function GamblingPage() {
           </div>
         </div>
       </div>
+
+      {/* Win/Lose Result Modal */}
+      <ResultModal 
+        result={challengeResult} 
+        onClose={() => setChallengeResult(null)} 
+      />
     </div>
   );
 }
