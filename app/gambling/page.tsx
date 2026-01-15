@@ -20,6 +20,7 @@ import {
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useSwitchChain,
 } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { baseSepolia } from 'wagmi/chains';
@@ -189,7 +190,8 @@ function PlaceBidForm({
 }
 
 export default function GamblingPage() {
-  const { address } = useAccount();
+  const { address, chain } = useAccount();
+  const { switchChain } = useSwitchChain();
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
 
   // Read active bids
@@ -277,8 +279,18 @@ export default function GamblingPage() {
 
   const isLoading = isWritePending || isTxLoading;
 
-  const handlePlaceBid = (amount: string) => {
+  const handlePlaceBid = async (amount: string) => {
     try {
+      // Check if we're on the correct chain
+      if (chain?.id !== baseSepolia.id) {
+        if (switchChain) {
+          await switchChain({ chainId: baseSepolia.id });
+        } else {
+          alert('Please switch to Base Sepolia network in your wallet');
+          return;
+        }
+      }
+
       writeContract(
         {
           abi: GamblingAbi,
@@ -304,8 +316,18 @@ export default function GamblingPage() {
     }
   };
 
-  const handleChallenge = (bidId: bigint, amount: string) => {
+  const handleChallenge = async (bidId: bigint, amount: string) => {
     try {
+      // Check if we're on the correct chain
+      if (chain?.id !== baseSepolia.id) {
+        if (switchChain) {
+          await switchChain({ chainId: baseSepolia.id });
+        } else {
+          alert('Please switch to Base Sepolia network in your wallet');
+          return;
+        }
+      }
+
       writeContract(
         {
           abi: GamblingAbi,
@@ -332,8 +354,18 @@ export default function GamblingPage() {
     }
   };
 
-  const handleCancel = (bidId: bigint) => {
+  const handleCancel = async (bidId: bigint) => {
     try {
+      // Check if we're on the correct chain
+      if (chain?.id !== baseSepolia.id) {
+        if (switchChain) {
+          await switchChain({ chainId: baseSepolia.id });
+        } else {
+          alert('Please switch to Base Sepolia network in your wallet');
+          return;
+        }
+      }
+
       writeContract(
         {
           abi: GamblingAbi,
@@ -426,6 +458,30 @@ export default function GamblingPage() {
 
         {/* Place bid form */}
         {address && <PlaceBidForm onPlaceBid={handlePlaceBid} isLoading={isLoading} />}
+
+        {/* Wrong network warning */}
+        {address && chain?.id !== baseSepolia.id && (
+          <div className="connect-prompt" style={{ background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)', borderColor: '#ff6b6b' }}>
+            <p> Wrong Network! Please switch to Base Sepolia (Chain ID: {baseSepolia.id})</p>
+            {switchChain && (
+              <button 
+                onClick={() => switchChain({ chainId: baseSepolia.id })}
+                style={{ 
+                  marginTop: '10px', 
+                  padding: '8px 16px', 
+                  background: 'white', 
+                  color: '#ff6b6b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Switch to Base Sepolia
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Connect prompt */}
         {!address && (
